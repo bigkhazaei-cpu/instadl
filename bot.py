@@ -2,11 +2,29 @@ import os
 import glob
 import asyncio
 import logging
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaVideo, InputMediaPhoto, BotCommand
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 from telegram.request import HTTPXRequest
 import yt_dlp
 import instaloader
+
+# ---- بخش جدید: سرور وب کوچک برای گول زدن پورت اسکنر رندر ----
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is alive and running!")
+
+def run_web_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+    server.serve_forever()
+
+# استارت سرور وب در یک ترد جداگانه
+threading.Thread(target=run_web_server, daemon=True).start()
+# -------------------------------------------------------------
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -14,7 +32,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# خواندن توکن به صورت امن از متغیرهای محیطی سرور (Render)
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = 0
 
@@ -31,7 +48,6 @@ L = instaloader.Instaloader(
     post_metadata_txt_pattern=""
 )
 
-# بارگذاری امن کوکی اینستاگرام با مسیر مطلق
 try:
     base_dir = os.path.dirname(os.path.abspath(__file__))
     for cookie_filename in ["cookies.txt", "cookies1.txt", "www.instagram.com_cookies.txt"]:
@@ -43,7 +59,6 @@ except Exception:
     pass
 
 async def set_bot_commands(application):
-    """تنظیم لیست دستورات منو برای نمایش در تلگرام"""
     commands = [
         BotCommand("start", "شروع به کار ربات"),
         BotCommand("help", "راهنمای استفاده از ربات"),
@@ -63,23 +78,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(welcome_text)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """هندلر دستور راهنما (/help)"""
     help_text = (
         "🤖 **راهنمای استفاده از ربات دانلودر مدیا**\n\n"
         "با این ربات می‌توانید به سادگی و با بالاترین کیفیت، محتوای دلخواه خود را از شبکه‌های اجتماعی دانلود کنید.\n\n"
         "📥 **نحوه دانلود از یوتیوب:**\n"
         "کافی است لینک ویدیوی یوتیوب را بفرستید تا گزینه‌های انتخاب کیفیت یا تبدیل به صوت (MP3) را دریافت کنید.\n\n"
         "📥 **نحوه دانلود از اینستاگرام:**\n"
-        "لینک پست، ریلز یا ویدیو را بفرستید تا فایل مستقیماً ارسال شود.\n\n"
-        "💬 برای شروع کافی است لینک خود را همینجا ارسال کنید!"
+        "لینک پست، ریلز یا ویدیو را بفرستید تا فایل مستقیماً ارسال شود."
     )
     await update.message.reply_text(help_text, parse_mode="Markdown")
 
 async def support_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """هندلر دستور پشتیبانی (/support)"""
     support_text = (
         "🛠 **پشتیبانی و ارتباط با سازنده**\n\n"
-        "اگر در حین دانلود ویدیوها با خطایی مواجه شدید یا پیشنهادی دارید، می‌توانید از طریق لینک زیر با ما در ارتباط باشید:\n\n"
+        "اگر در حین دانلود ویدیوها با خطایی مواجه شدید، می‌توانید از طریق لینک زیر با ما در ارتباط باشید:\n\n"
         "👤 [ارتباط با پشتیبانی](https://t.me/Alirezazpx)"
     )
     await update.message.reply_text(support_text, parse_mode="Markdown")
@@ -127,7 +139,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
     data = query.data
     action, url = data.split("|", 1)
     
@@ -140,7 +151,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await download_queue.put((query, action, url, status_msg))
 
 async def download_worker():
-    """کارگر پس‌زمینه برای پردازش صف دانلود با قابلیت خروج ایمن"""
     try:
         while True:
             try:
@@ -168,19 +178,16 @@ async def download_worker():
                                 percent = (percent // 10) * 10
                                 if percent > 90:
                                     percent = 90
-                                
                                 if percent != last_reported_percent[0]:
                                     last_reported_percent[0] = percent
                                     filled = int(percent / 10)
                                     bar = '▓' * filled + '░' * (10 - filled)
                                     text = f"`[{bar}] {percent}%`"
-                                    
                                     async def external_update():
                                         try:
                                             await msg_obj.edit_text(text, parse_mode="Markdown")
                                         except Exception:
                                             pass
-                                    
                                     asyncio.run_coroutine_threadsafe(external_update(), loop)
                     return hook
 
@@ -201,7 +208,6 @@ async def download_worker():
                                     raise
 
                             stepper_t = asyncio.create_task(insta_stepper())
-
                             shortcode = url.split("/p/")[1].split("/")[0].split("?")[0] if "/p/" in url else url.split("/reel/")[1].split("/")[0].split("?")[0]
                             post = instaloader.Post.from_shortcode(L.context, shortcode)
                             
@@ -309,14 +315,11 @@ async def download_worker():
                                 break
                             f = open(file_path, 'rb')
                             file_objects.append(f)
-                            
                             caption = post_caption if i == 0 else None
-                            
                             if file_path.endswith(('.jpg', '.jpeg', '.png', '.webp')):
                                 media_group.append(InputMediaPhoto(media=f, caption=caption))
                             elif file_path.endswith(('.mp4', '.m4v')):
                                 media_group.append(InputMediaVideo(media=f, caption=caption))
-                        
                         if media_group:
                             await message_context.reply_media_group(media=media_group)
                     finally:
