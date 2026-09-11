@@ -146,7 +146,6 @@ async def download_worker():
     global is_running
     while is_running:
         try:
-            # استفاده از تایم‌اوت برای اینکه حلقه قفل نشود و بتواند وضعیت is_running را بررسی کند
             try:
                 item = await asyncio.wait_for(download_queue.get(), timeout=1.0)
             except asyncio.TimeoutError:
@@ -241,6 +240,11 @@ async def download_worker():
                         'extractor_retries': 5,
                         'outtmpl': 'downloaded_media_%(id)s_%(autonumber)s.%(ext)s',
                         'progress_hooks': [make_progress_hook(status_msg, loop)],
+                        'extractor_args': {
+                            'youtube': {
+                                'player_client': ['android', 'web'],
+                            }
+                        },
                     }
 
                     # تنظیم دقیق مسیر مطلق فایل کوکی یوتیوب
