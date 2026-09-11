@@ -21,9 +21,6 @@ ADMIN_ID = 0
 download_queue = asyncio.Queue()
 active_users = set()
 
-# متغیر برای کنترل وضعیت کارگر (Worker) هنگام خاموش شدن ربات
-is_running = True
-
 L = instaloader.Instaloader(
     download_videos=True,
     download_video_thumbnails=False,
@@ -143,9 +140,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await download_queue.put((query, action, url, status_msg))
 
 async def download_worker():
-    global is_running
-    while is_running:
-        try:
+    """کارگر پس‌زمینه برای پردازش صف دانلود با قابلیت خروج ایمن"""
+    try:
+        while True:
             try:
                 item = await asyncio.wait_for(download_queue.get(), timeout=1.0)
             except asyncio.TimeoutError:
@@ -201,7 +198,7 @@ async def download_worker():
                                         except:
                                             pass
                                 except asyncio.CancelledError:
-                                    pass
+                                    raise
 
                             stepper_t = asyncio.create_task(insta_stepper())
 
@@ -372,18 +369,28 @@ async def download_worker():
                             os.rmdir(d)
                         except Exception:
                             pass
-                download_queue.task_done()
-        except Exception:
-            pass
+                try:
+                    download_queue.task_done()
+                except ValueError:
+                    pass
+    except asyncio.CancelledError:
+        # مدیریت خروج نرم تسک برای جلوگیری از ارور Task was destroyed
+        logger.info("Download worker cancelled gracefully.")
+        raise
 
 async def post_init(application):
-    asyncio.create_task(download_worker())
+    application.bot_data["worker_task"] = asyncio.create_task(download_worker())
     await set_bot_commands(application)
     print("🚀 ربات آماده به کار است...")
 
 async def post_shutdown(application):
-    global is_running
-    is_running = False
+    task = application.bot_data.get("worker_task")
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 if __name__ == '__main__':
     request = HTTPXRequest(connect_timeout=60.0, read_timeout=90.0)
@@ -404,4 +411,5 @@ if __name__ == '__main__':
     app.add_handler(CallbackQueryHandler(button_callback))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
     
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
     app.run_polling()
