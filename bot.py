@@ -181,14 +181,17 @@ async def download_worker():
                 try:
                     if "/p/" in url or "/reel/" in url or "/tv/" in url:
                         async def insta_stepper():
-                            for p in [10, 30, 50, 70, 90]:
-                                await asyncio.sleep(0.4)
-                                filled = int(p / 10)
-                                bar = '▓' * filled + '░' * (10 - filled)
-                                try:
-                                    await status_msg.edit_text(f"`[{bar}] {p}%`", parse_mode="Markdown")
-                                except:
-                                    pass
+                            try:
+                                for p in [10, 30, 50, 70, 90]:
+                                    await asyncio.sleep(0.4)
+                                    filled = int(p / 10)
+                                    bar = '▓' * filled + '░' * (10 - filled)
+                                    try:
+                                        await status_msg.edit_text(f"`[{bar}] {p}%`", parse_mode="Markdown")
+                                    except:
+                                        pass
+                            except asyncio.CancelledError:
+                                pass
 
                         stepper_t = asyncio.create_task(insta_stepper())
 
@@ -208,6 +211,10 @@ async def download_worker():
                         await loop.run_in_executor(None, lambda: L.download_post(post, target=target_dir))
                         
                         stepper_t.cancel()
+                        try:
+                            await stepper_t
+                        except asyncio.CancelledError:
+                            pass
 
                         for file in sorted(glob.glob(os.path.join(target_dir, "*.*"))):
                             if file.endswith(('.mp4', '.jpg', '.jpeg', '.png', '.webp')) and not file.endswith('.json'):
