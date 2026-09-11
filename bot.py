@@ -31,11 +31,13 @@ L = instaloader.Instaloader(
     post_metadata_txt_pattern=""
 )
 
-# تلاش برای بارگذاری کوکی اینستاگرام در صورت وجود
+# بارگذاری امن کوکی اینستاگرام با مسیر مطلق
 try:
+    base_dir = os.path.dirname(os.path.abspath(__file__))
     for cookie_filename in ["cookies.txt", "cookies1.txt", "www.instagram.com_cookies.txt"]:
-        if os.path.exists(cookie_filename):
-            L.load_session_from_file(cookie_filename)
+        c_path = os.path.join(base_dir, cookie_filename)
+        if os.path.exists(c_path):
+            L.load_session_from_file(c_path)
             break
 except Exception:
     pass
@@ -220,14 +222,15 @@ async def download_worker():
                     'socket_timeout': 60,
                     'extractor_retries': 5,
                     'outtmpl': 'downloaded_media_%(id)s_%(autonumber)s.%(ext)s',
-                    'js_runtimes': {'deno': {}},
                     'progress_hooks': [make_progress_hook(status_msg, loop)],
                 }
 
-                # بررسی و اعمال فایل کوکی یوتیوب به صورت خودکار از بین گزینه‌های موجود
-                for cookie_file in ["www.youtube.com_cookies.txt", "cookies.txt", "cookies1.txt"]:
-                    if os.path.exists(cookie_file):
-                        ydl_opts['cookiefile'] = cookie_file
+                # تنظیم دقیق مسیر مطلق فایل کوکی یوتیوب
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+                for c_file in ["www.youtube.com_cookies.txt", "cookies.txt", "cookies1.txt"]:
+                    c_path = os.path.join(base_dir, c_file)
+                    if os.path.exists(c_path):
+                        ydl_opts['cookiefile'] = c_path
                         break
 
                 if action == "yt_audio_mp3":
