@@ -14,7 +14,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-BOT_TOKEN = "8726273820:AAE_ij66ySSJNeLtqUwzAnvqKyGtUmBatP0"
+# خواندن توکن به صورت امن از متغیرهای محیطی سرور (Render)
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = 0
 
 download_queue = asyncio.Queue()
@@ -57,23 +58,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(welcome_text)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """هندلر دستور راهنما (`/help`)"""
+    """هندلر دستور راهنما (/help)"""
     help_text = (
         "🤖 **راهنمای استفاده از ربات دانلودر مدیا**\n\n"
         "با این ربات می‌توانید به سادگی و با بالاترین کیفیت، محتوای دلخواه خود را از شبکه‌های اجتماعی دانلود کنید.\n\n"
         "📥 **نحوه دانلود از یوتیوب:**\n"
-        "کافی است لینک ویدیوی یوتیوب را بفرستید تا گزینه‌های انتخاب کیفیت (از 4K تا 480p) یا تبدیل به صوت (MP3) را دریافت کنید.\n\n"
+        "کافی است لینک ویدیوی یوتیوب را بفرستید تا گزینه‌های انتخاب کیفیت یا تبدیل به صوت (MP3) را دریافت کنید.\n\n"
         "📥 **نحوه دانلود از اینستاگرام:**\n"
-        "لینک پست، ریلز یا ویدیو را بفرستید تا فایل مستقیماً با کپشن کامل ارسال شود.\n\n"
+        "لینک پست، ریلز یا ویدیو را بفرستید تا فایل مستقیماً ارسال شود.\n\n"
         "💬 برای شروع کافی است لینک خود را همینجا ارسال کنید!"
     )
     await update.message.reply_text(help_text, parse_mode="Markdown")
 
 async def support_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """هندلر دستور پشتیبانی (`/support`)"""
+    """هندلر دستور پشتیبانی (/support)"""
     support_text = (
         "🛠 **پشتیبانی و ارتباط با سازنده**\n\n"
-        "اگر در حین دانلود ویدیوها با خطایی مواجه شدید، لینک نامعتبر بود یا پیشنهادی دارید، می‌توانید از طریق لینک زیر با ما در ارتباط باشید:\n\n"
+        "اگر در حین دانلود ویدیوها با خطایی مواجه شدید یا پیشنهادی دارید، می‌توانید از طریق لینک زیر با ما در ارتباط باشید:\n\n"
         "👤 [ارتباط با پشتیبانی](https://t.me/Alirezazpx)"
     )
     await update.message.reply_text(support_text, parse_mode="Markdown")
@@ -343,9 +344,8 @@ async def download_worker():
 
 async def post_init(application):
     asyncio.create_task(download_worker())
-    # تنظیم دکمه‌های منو بلافاصله پس از روشن شدن ربات
     await set_bot_commands(application)
-    print("🚀 ربات با قابلیت خروجی استاندارد MP4، بخش راهنما و پشتیبانی آماده به کار است...")
+    print("🚀 ربات آماده به کار است...")
 
 if __name__ == '__main__':
     request = HTTPXRequest(connect_timeout=60.0, read_timeout=90.0)
