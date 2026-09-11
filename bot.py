@@ -31,9 +31,12 @@ L = instaloader.Instaloader(
     post_metadata_txt_pattern=""
 )
 
+# تلاش برای بارگذاری کوکی اینستاگرام در صورت وجود
 try:
-    if os.path.exists("cookies.txt"):
-        L.load_session_from_file("cookies.txt")
+    for cookie_filename in ["cookies.txt", "cookies1.txt", "www.instagram.com_cookies.txt"]:
+        if os.path.exists(cookie_filename):
+            L.load_session_from_file(cookie_filename)
+            break
 except Exception:
     pass
 
@@ -221,8 +224,11 @@ async def download_worker():
                     'progress_hooks': [make_progress_hook(status_msg, loop)],
                 }
 
-                if os.path.exists("cookies.txt"):
-                    ydl_opts['cookiefile'] = "cookies.txt"
+                # بررسی و اعمال فایل کوکی یوتیوب به صورت خودکار از بین گزینه‌های موجود
+                for cookie_file in ["www.youtube.com_cookies.txt", "cookies.txt", "cookies1.txt"]:
+                    if os.path.exists(cookie_file):
+                        ydl_opts['cookiefile'] = cookie_file
+                        break
 
                 if action == "yt_audio_mp3":
                     ydl_opts['format'] = 'bestaudio/best'
