@@ -244,7 +244,6 @@ async def download_worker():
                         },
                     }
 
-                    # تنظیم دقیق مسیر مطلق فایل کوکی یوتیوب
                     base_dir = os.path.dirname(os.path.abspath(__file__))
                     for c_file in ["www.youtube.com_cookies.txt", "cookies.txt", "cookies1.txt"]:
                         c_path = os.path.join(base_dir, c_file)
@@ -374,7 +373,6 @@ async def download_worker():
                 except ValueError:
                     pass
     except asyncio.CancelledError:
-        # مدیریت خروج نرم تسک برای جلوگیری از ارور Task was destroyed
         logger.info("Download worker cancelled gracefully.")
         raise
 
@@ -411,5 +409,22 @@ if __name__ == '__main__':
     app.add_handler(CallbackQueryHandler(button_callback))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
     
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
-    app.run_polling()
+    async def main():
+        await app.initialize()
+        await app.start()
+        await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+        
+        stop_signal = asyncio.Event()
+        try:
+            await stop_signal.wait()
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            pass
+        finally:
+            await app.updater.stop()
+            await app.stop()
+            await app.shutdown()
+
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        pass
