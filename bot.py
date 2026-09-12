@@ -10,12 +10,18 @@ from telegram.request import HTTPXRequest
 import yt_dlp
 import instaloader
 
-# ---- بخش جدید: سرور وب کوچک برای گول زدن پورت اسکنر رندر ----
+# ---- بخش جدید: سرور وب کوچک برای گول زدن پورت اسکنر رندر (با پشتیبانی از GET و HEAD) ----
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
+        self.send_header("Content-type", "text/html")
         self.end_headers()
         self.wfile.write(b"Bot is alive and running!")
+
+    def do_HEAD(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
 
 def run_web_server():
     port = int(os.environ.get("PORT", 10000))
@@ -141,7 +147,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data = query.data
     action, url = data.split("|", 1)
-    
+     
     try:
         await query.message.edit_text("`[░░░░░░░░░░] 0%`", parse_mode="Markdown")
     except Exception:
