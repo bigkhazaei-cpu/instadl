@@ -8,9 +8,8 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMe
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 from telegram.request import HTTPXRequest
 import yt_dlp
-import instaloader
 
-# ---- بخش جدید: سرور وب کوچک برای گول زدن پورت اسکنر رندر (با پشتیبانی از GET و HEAD) ----
+# ---- سرور وب کوچک برای پینگ UptimeRobot (با پشتیبانی از GET و HEAD) ----
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -44,26 +43,6 @@ ADMIN_ID = 0
 download_queue = asyncio.Queue()
 active_users = set()
 
-L = instaloader.Instaloader(
-    download_videos=True,
-    download_video_thumbnails=False,
-    download_geotags=False,
-    download_comments=False,
-    save_metadata=False,
-    compress_json=False,
-    post_metadata_txt_pattern=""
-)
-
-try:
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    for cookie_filename in ["cookies.txt", "cookies1.txt", "www.instagram.com_cookies.txt"]:
-        c_path = os.path.join(base_dir, cookie_filename)
-        if os.path.exists(c_path):
-            L.load_session_from_file(c_path)
-            break
-except Exception:
-    pass
-
 async def set_bot_commands(application):
     commands = [
         BotCommand("start", "شروع به کار ربات"),
@@ -79,18 +58,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         f"سلام {user.first_name}! 👋\n\n"
         "من ربات پیشرفته و حرفه‌ای دانلودر شما هستم. 🚀\n"
-        "لینک ویدیو، شورتز یا عکس از یوتیوب، اینستاگرام، تیک‌تاک یا ساندکلاد را بفرستید."
+        "لینک ویدیو، ریلز یا عکس از یوتیوب، اینستاگرام، تیک‌تاک و... را بفرستید."
     )
     await update.message.reply_text(welcome_text)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
         "🤖 **راهنمای استفاده از ربات دانلودر مدیا**\n\n"
-        "با این ربات می‌توانید به سادگی و با بالاترین کیفیت، محتوای دلخواه خود را از شبکه‌های اجتماعی دانلود کنید.\n\n"
-        "📥 **نحوه دانلود از یوتیوب:**\n"
-        "کافی است لینک ویدیوی یوتیوب را بفرستید تا گزینه‌های انتخاب کیفیت یا تبدیل به صوت (MP3) را دریافت کنید.\n\n"
-        "📥 **نحوه دانلود از اینستاگرام:**\n"
-        "لینک پست، ریلز یا ویدیو را بفرستید تا فایل مستقیماً ارسال شود."
+        "با این ربات می‌توانید به سادگی و با بالاترین کیفیت، محتوای دلخواه خود را دانلود کنید.\n\n"
+        "📥 **نحوه استفاده:**\n"
+        "کافی است لینک ویدیو یا پست مورد نظر از یوتیوب یا اینستاگرام را ارسال کنید."
     )
     await update.message.reply_text(help_text, parse_mode="Markdown")
 
@@ -166,7 +143,6 @@ async def download_worker():
 
             target_obj, action, url, status_msg = item
             downloaded_files = []
-            temp_dirs = []
             post_caption = ""
             is_callback = hasattr(target_obj, "message")
             message_context = target_obj.message if is_callback else target_obj.effective_message
@@ -197,110 +173,70 @@ async def download_worker():
                                     asyncio.run_coroutine_threadsafe(external_update(), loop)
                     return hook
 
-                if "instagram.com" in url:
-                    try:
-                        if "/p/" in url or "/reel/" in url or "/tv/" in url:
-                            async def insta_stepper():
-                                try:
-                                    for p in [10, 30, 50, 70, 90]:
-                                        await asyncio.sleep(0.4)
-                                        filled = int(p / 10)
-                                        bar = '▓' * filled + '░' * (10 - filled)
-                                        try:
-                                            await status_msg.edit_text(f"`[{bar}] {p}%`", parse_mode="Markdown")
-                                        except:
-                                            pass
-                                except asyncio.CancelledError:
-                                    raise
+                loop = asyncio.get_event_loop()
+                ydl_opts = {
+                    'ignoreerrors': True,
+                    'socket_timeout': 60,
+                    'extractor_retries': 5,
+                    'outtmpl': 'downloaded_media_%(id)s_%(autonumber)s.%(ext)s',
+                    'progress_hooks': [make_progress_hook(status_msg, loop)],
+                }
 
-                            stepper_t = asyncio.create_task(insta_stepper())
-                            shortcode = url.split("/p/")[1].split("/")[0].split("?")[0] if "/p/" in url else url.split("/reel/")[1].split("/")[0].split("?")[0]
-                            post = instaloader.Post.from_shortcode(L.context, shortcode)
-                            
-                            if post.caption:
-                                post_caption = post.caption
-                                if len(post_caption) > 1000:
-                                    post_caption = post_caption[:997] + "..."
+                # بارگذاری فایل کوکی برای اینستاگرام یا یوتیوب (در صورت وجود)
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+                for c_file in ["cookies.txt", "www.instagram.com_cookies.txt", "www.youtube.com_cookies.txt", "cookies1.txt"]:
+                    c_path = os.path.join(base_dir, c_file)
+                    if os.path.exists(c_path):
+                        ydl_opts['cookiefile'] = c_path
+                        break
 
-                            target_dir = f"temp_{shortcode}"
-                            os.makedirs(target_dir, exist_ok=True)
-                            temp_dirs.append(target_dir)
-                            
-                            loop = asyncio.get_event_loop()
-                            await loop.run_in_executor(None, lambda: L.download_post(post, target=target_dir))
-                            
-                            stepper_t.cancel()
-                            try:
-                                await stepper_t
-                            except asyncio.CancelledError:
-                                pass
-
-                            for file in sorted(glob.glob(os.path.join(target_dir, "*.*"))):
-                                if file.endswith(('.mp4', '.jpg', '.jpeg', '.png', '.webp')) and not file.endswith('.json'):
-                                    downloaded_files.append(file)
-                    except Exception as inst_err:
-                        logger.error(f"Instaloader fast download error: {inst_err}")
-
-                if not downloaded_files:
-                    loop = asyncio.get_event_loop()
-                    ydl_opts = {
-                        'ignoreerrors': True,
-                        'socket_timeout': 60,
-                        'extractor_retries': 5,
-                        'outtmpl': 'downloaded_media_%(id)s_%(autonumber)s.%(ext)s',
-                        'progress_hooks': [make_progress_hook(status_msg, loop)],
-                        'extractor_args': {
-                            'youtube': {
-                                'player_client': ['android', 'web'],
-                            }
-                        },
-                    }
-
-                    base_dir = os.path.dirname(os.path.abspath(__file__))
-                    for c_file in ["www.youtube.com_cookies.txt", "cookies.txt", "cookies1.txt"]:
-                        c_path = os.path.join(base_dir, c_file)
-                        if os.path.exists(c_path):
-                            ydl_opts['cookiefile'] = c_path
-                            break
-
-                    if action == "yt_audio_mp3":
-                        ydl_opts['format'] = 'bestaudio/best'
-                        ydl_opts['postprocessors'] = [{
-                            'key': 'FFmpegExtractAudio',
-                            'preferredcodec': 'mp3',
-                            'preferredquality': '192',
-                        }]
+                if action == "yt_audio_mp3":
+                    ydl_opts['format'] = 'bestaudio/best'
+                    ydl_opts['postprocessors'] = [{
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'mp3',
+                        'preferredquality': '192',
+                    }]
+                else:
+                    ydl_opts['merge_output_format'] = 'mp4'
+                    if action == "yt_720":
+                        ydl_opts['format'] = 'bestvideo[height<=720]+bestaudio/best[height<=720]/best'
+                    elif action == "yt_480":
+                        ydl_opts['format'] = 'bestvideo[height<=480]+bestaudio/best[height<=480]/best'
                     else:
-                        ydl_opts['merge_output_format'] = 'mp4'
-                        if action == "yt_720":
-                            ydl_opts['format'] = 'bestvideo[height<=720]+bestaudio/best[height<=720]/best'
-                        elif action == "yt_480":
-                            ydl_opts['format'] = 'bestvideo[height<=480]+bestaudio/best[height<=480]/best'
-                        else:
-                            ydl_opts['format'] = 'best/bestvideo+bestaudio/best'
+                        ydl_opts['format'] = 'best/bestvideo+bestaudio/best'
 
-                    def run_ytdlp():
-                        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                            return ydl.extract_info(url, download=True)
+                def run_ytdlp():
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        return ydl.extract_info(url, download=True)
 
-                    info = await loop.run_in_executor(None, run_ytdlp)
+                info = await loop.run_in_executor(None, run_ytdlp)
 
-                    if info:
-                        media_ids = []
-                        if 'entries' in info:
-                            for entry in info['entries']:
-                                if entry and 'id' in entry:
-                                    media_ids.append(entry['id'])
-                        elif 'id' in info:
-                            media_ids.append(info['id'])
+                if info:
+                    media_ids = []
+                    if 'entries' in info:
+                        for entry in info['entries']:
+                            if entry and 'id' in entry:
+                                media_ids.append(entry['id'])
+                    elif 'id' in info:
+                        media_ids.append(info['id'])
 
-                        if info and 'title' in info:
-                            post_caption = f"📌 {info.get('title')}"
+                    if info and 'title' in info:
+                        post_caption = f"📌 {info.get('title')}"
+                    elif info and 'description' in info and info.get('description'):
+                        desc = info.get('description')
+                        post_caption = desc[:997] + "..." if len(desc) > 1000 else desc
 
-                        for mid in media_ids:
-                            for found_file in sorted(glob.glob(f"*{mid}*")):
-                                if found_file not in downloaded_files and not found_file.endswith(('.py', '.txt', '.json')):
-                                    downloaded_files.append(found_file)
+                    for mid in media_ids:
+                        for found_file in sorted(glob.glob(f"*{mid}*")):
+                            if found_file not in downloaded_files and not found_file.endswith(('.py', '.txt', '.json')):
+                                downloaded_files.append(found_file)
+
+                # روش کمکی دوم برای یافتن فایل‌های دانلود شده احتمالی جدید
+                if not downloaded_files:
+                    for found_file in sorted(glob.glob("downloaded_media_*")):
+                        if not found_file.endswith(('.py', '.txt', '.json')) and found_file not in downloaded_files:
+                            downloaded_files.append(found_file)
 
                 if not downloaded_files:
                     await status_msg.edit_text("❌ دانلود انجام نشد. لینک معتبر نیست یا فایل در دسترس نمی‌باشد.")
@@ -324,7 +260,7 @@ async def download_worker():
                             caption = post_caption if i == 0 else None
                             if file_path.endswith(('.jpg', '.jpeg', '.png', '.webp')):
                                 media_group.append(InputMediaPhoto(media=f, caption=caption))
-                            elif file_path.endswith(('.mp4', '.m4v')):
+                            elif file_path.endswith(('.mp4', '.m4v', '.mov', '.webm')):
                                 media_group.append(InputMediaVideo(media=f, caption=caption))
                         if media_group:
                             await message_context.reply_media_group(media=media_group)
@@ -364,17 +300,6 @@ async def download_worker():
                     if os.path.exists(file_path):
                         try:
                             os.remove(file_path)
-                        except Exception:
-                            pass
-                for d in temp_dirs:
-                    if os.path.isdir(d):
-                        for f in glob.glob(os.path.join(d, "*.*")):
-                            try:
-                                os.remove(f)
-                            except Exception:
-                                pass
-                        try:
-                            os.rmdir(d)
                         except Exception:
                             pass
                 try:
@@ -435,5 +360,5 @@ if __name__ == '__main__':
 
     try:
         asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
+    except (KeyboardImport, SystemExit):
         pass
